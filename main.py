@@ -27,12 +27,12 @@ def load_image(name, color_key=0):
 
 
 class DefaultCell(ABC):
-    def __init__(self, x: int, y: int, direction: Direction, cell_size: int, cell_distance: int, left: int, top: int):
+    def __init__(self, x: int, y: int, direction: Direction, board):
         self.direction = direction
-        self.x = left + (cell_size + cell_distance) * x
-        self.y = top + (cell_size + cell_distance) * y
+        self.x = board.left + (board.cell_size + board.cell_distance) * x
+        self.y = board.top + (board.cell_size + board.cell_distance) * y
         self.sprite = None
-        self.cell_size = cell_size
+        self.cell_size = board.cell_size
         self.init_image()
 
     @abstractmethod
@@ -76,15 +76,66 @@ class ClickableCell(DefaultCell):
         pass
 
 
+class BombCell(ClickableCell):
+    def __init__(self, x: int, y: int, direction: Direction, board):
+        super().__init__(x, y, direction, board)
+        self.board = board
+        self.table_x = x
+        self.table_y = y
+        self.is_mouse_down = False
+
+    def on_mouse_up(self):
+        if not self.is_mouse_down:
+            return None
+        neighbors = [(self.table_x, self.table_y + 1), (self.table_x, self.table_y - 1),
+                     (self.table_x + 1, self.table_y), (self.table_x - 1, self.table_y)]
+        for neighbor in neighbors:
+            neighbor_x, neighbor_y = neighbor
+            if type(self.board.table[neighbor_y][neighbor_x]) == CapitalCell:
+                continue
+            if neighbor_x in range(self.board.side_size) and neighbor_y in range(self.board.side_size):
+                self.board.table[neighbor_y][neighbor_x] = EmptyCell(neighbor_x, neighbor_y, self.direction, self.board)
+        self.board.table[self.table_y][self.table_x] = EmptyCell(self.table_x, self.table_y, self.direction, self.board)
+
+    def on_mouse_down(self, mouse_pos):
+        self.is_mouse_down = True
+
+    def init_image(self):
+        if self.sprite:
+            cell_sprites.remove(self.sprite)
+        self.sprite = pygame.sprite.Sprite()
+        self.sprite.image = load_image(f"bomb{self.direction.name}.png", color_key=-1)
+        self.sprite.image = pygame.transform.scale(self.sprite.image, (self.cell_size, self.cell_size))
+        self.sprite.rect = (self.x, self.y)
+        cell_sprites.add(self.sprite)
+
+
+class ProtectedCell(DefaultCell):
+    @abstractmethod
+    def init_image(self):
+        pass
+
+
+class TowerCell(ProtectedCell):
+    def init_image(self):
+        if self.sprite:
+            cell_sprites.remove(self.sprite)
+        self.sprite = pygame.sprite.Sprite()
+        self.sprite.image = load_image(f"tower{self.direction.name}.png", color_key=-1)
+        self.sprite.image = pygame.transform.scale(self.sprite.image, (self.cell_size, self.cell_size))
+        self.sprite.rect = (self.x, self.y)
+        cell_sprites.add(self.sprite)
+
+
 class DraggableCell(ClickableCell):
-    def __init__(self, x: int, y: int, direction: Direction, cell_size: int, cell_distance: int, left: int, top: int):
+    def __init__(self, x: int, y: int, direction: Direction, board):
         self.is_draggable = False
         self.is_correct_coordinates = False
-        self.draw_x = left + (cell_size + cell_distance) * x
-        self.draw_y = top + (cell_size + cell_distance) * y
+        self.draw_x = board.left + (board.cell_size + board.cell_distance) * x
+        self.draw_y = board.top + (board.cell_size + board.cell_distance) * y
         self.diff_x = 0
         self.diff_y = 0
-        super().__init__(x, y, direction, cell_size, cell_distance, left, top)
+        super().__init__(x, y, direction, board)
 
     @abstractmethod
     def init_image(self):
@@ -107,13 +158,14 @@ class DraggableCell(ClickableCell):
             self.init_image()
 
 
-all_cells = [EmptyCell]
+all_cells = [EmptyCell, TowerCell, BombCell]
+directions = [Direction.NOBODY, Direction.BLUE, Direction.ORANGE]
 
 
 class AddingCell(DraggableCell):
-    def __init__(self, x: int, y: int, direction: Direction, cell_size: int, cell_distance: int, left: int, top: int):
+    def __init__(self, x: int, y: int, direction: Direction, board):
         self.new_cell = all_cells[random.randint(0, len(all_cells)) - 1]
-        super().__init__(x, y, direction, cell_size, cell_distance, left, top)
+        super().__init__(x, y, direction, board)
         self.init_image()
 
     def init_image(self):
@@ -134,27 +186,23 @@ class Board:
         self.cell_distance = (pygame.display.get_window_size()[0] // 2 - self.left) // (self.side_size * 10)
         self.cell_size = (pygame.display.get_window_size()[1] - self.left) // self.side_size - self.cell_distance
         self.top = (pygame.display.get_window_size()[1] - (self.cell_size + self.cell_distance) * self.side_size) // 2
-        self.table = [[EmptyCell(x, y, Direction.NOBODY, self.cell_size, self.cell_distance, self.left, self.top)
+        self.table = [[EmptyCell(x, y, Direction.NOBODY, self)
                        for x in range(self.side_size)] for y in range(self.side_size)]
-        self.added = [AddingCell(x, 6, self.current_direction, self.cell_size, self.cell_distance, self.left, self.top)
+        self.added = [AddingCell(x, 6, self.current_direction, self)
                       for x in range(self.side_size + 2, self.side_size + 5)]
         self.first_capital_coordinates = None
         self.second_capital_coordinates = None
 
     def change_current_direction(self):
-        directions = [Direction.NOBODY, Direction.BLUE, Direction.ORANGE]
-
         self.current_direction = directions[directions.index(self.current_direction) % 2 + 1]
-        self.added = [AddingCell(x, 6, self.current_direction, self.cell_size, self.cell_distance, self.left, self.top)
+        self.added = [AddingCell(x, 6, self.current_direction, self)
                       for x in range(self.side_size + 2, self.side_size + 5)]
 
     def create_capitals(self):
         first_x, first_y = self.first_capital_coordinates
         second_x, second_y = self.second_capital_coordinates
-        self.table[first_y][first_x] = CapitalCell(first_x, first_y, Direction.ORANGE,
-                                                   self.cell_size, self.cell_distance, self.left, self.top)
-        self.table[second_y][second_x] = CapitalCell(second_x, second_y, Direction.BLUE,
-                                                     self.cell_size, self.cell_distance, self.left, self.top)
+        self.table[first_y][first_x] = CapitalCell(first_x, first_y, Direction.BLUE, self)
+        self.table[second_y][second_x] = CapitalCell(second_x, second_y, Direction.ORANGE, self)
 
     def generate_capitals_coordinates(self, distance: int):
         first_x, second_x = random.choices(range(self.side_size), k=2)
@@ -166,6 +214,11 @@ class Board:
         self.generate_capitals_coordinates(distance)
 
     def is_cell_can_be_captured(self, x: int, y: int):
+        if self.table[y][x].direction == self.current_direction:
+            return False
+        if self.table[y][x].direction == directions[directions.index(self.current_direction) % 2 + 1]:
+            if type(self.table[y][x]) == TowerCell:
+                return False
         neighbors = [(x, y + 1), (x, y - 1), (x + 1, y), (x - 1, y)]
         for neighbor in neighbors:
             neighbor_x, neighbor_y = neighbor
@@ -173,18 +226,6 @@ class Board:
                 neighbor_cell = self.table[neighbor_y][neighbor_x]
                 if neighbor_cell.direction == self.current_direction:
                     return True
-        return False
-
-    def is_cell_alive(self, x: int, y: int):
-        neighbors = [(x, y + 1), (x, y - 1), (x + 1, y), (x - 1, y)]
-        for neighbor in neighbors:
-            neighbor_x, neighbor_y = neighbor
-            if neighbor_x in range(self.side_size) and neighbor_y in range(self.side_size):
-                neighbor_cell = self.table[neighbor_y][neighbor_x]
-                if type(neighbor_cell) == CapitalCell:
-                    return True
-                else:
-                    self.is_cell_alive(neighbor_x, neighbor_y)
         return False
 
     def add_new_cell(self, cell: AddingCell):
@@ -195,8 +236,7 @@ class Board:
                     x_diff = abs(table_cell.x - cell.draw_x)
                     y_diff = abs(table_cell.y - cell.draw_y)
                     if x_diff < self.cell_size // 3 and y_diff < self.cell_size // 3:
-                        self.table[y][x] = cell.new_cell(x, y, cell.direction, self.cell_size,
-                                                         self.cell_distance, self.left, self.top)
+                        self.table[y][x] = cell.new_cell(x, y, self.current_direction, self)
                         self.change_current_direction()
 
 
@@ -243,11 +283,26 @@ class GameManager(Board):
                         y_range = range(cell.y, cell.y + self.cell_size)
                         if event.pos[0] in x_range and event.pos[1] in y_range:
                             cell.on_mouse_down(event.pos)
+                    for row in self.table:
+                        for cell in row:
+                            if issubclass(type(cell), ClickableCell):
+                                x_range = range(cell.x, cell.x + self.cell_size)
+                                y_range = range(cell.y, cell.y + self.cell_size)
+                                if event.pos[0] in x_range and event.pos[1] in y_range:
+                                    cell.on_mouse_down(event.pos)
             if event.type == pygame.MOUSEBUTTONUP:
                 if event.button == 1:
                     for cell in self.added:
                         self.add_new_cell(cell)
                         cell.on_mouse_up()
+                    for row in self.table:
+                        for cell in row:
+                            if issubclass(type(cell), ClickableCell):
+                                x_range = range(cell.x, cell.x + self.cell_size)
+                                y_range = range(cell.y, cell.y + self.cell_size)
+                                if event.pos[0] in x_range and event.pos[1] in y_range:
+                                    cell.on_mouse_up()
+                                    self.change_current_direction()
             if event.type == pygame.MOUSEMOTION:
                 for cell in self.added:
                     cell.on_drag(event.pos)
