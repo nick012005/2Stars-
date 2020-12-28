@@ -185,6 +185,7 @@ class Board:
     def __init__(self, side_size: int):
         self.current_direction = Direction.ORANGE
         self.side_size = side_size
+        self.winner = None
         self.left = pygame.display.get_window_size()[0] // 20
         self.cell_distance = (pygame.display.get_window_size()[0] // 2 - self.left) // (self.side_size * 10)
         self.cell_size = (pygame.display.get_window_size()[1] - self.left) // self.side_size - self.cell_distance
@@ -242,6 +243,24 @@ class Board:
                         self.table[y][x] = cell.new_cell(x, y, self.current_direction, self)
                         self.change_current_direction()
 
+    def is_win(self):
+        is_blue_capital_alive = False
+        is_orange_capital_alive = False
+        for row in self.table:
+            for cell in row:
+                if type(cell) == CapitalCell:
+                    if cell.direction == Direction.BLUE:
+                        is_blue_capital_alive = True
+                    else:
+                        is_orange_capital_alive = True
+        if is_orange_capital_alive and is_blue_capital_alive:
+            return None
+        else:
+            if is_orange_capital_alive:
+                self.winner = Direction.ORANGE
+            else:
+                self.winner = Direction.BLUE
+
 
 class GameManager(Board):
     def __init__(self, side_size: int):
@@ -262,8 +281,12 @@ class GameManager(Board):
 
     def play(self):
         while self.is_game_process:
-            self.manage_events()
-            self.render()
+            self.is_win()
+            if not self.winner:
+                self.manage_events()
+                self.render()
+            else:
+                self.finish()
         pygame.quit()
 
     def finish(self):
