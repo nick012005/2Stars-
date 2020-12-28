@@ -87,15 +87,18 @@ class BombCell(ClickableCell):
     def on_mouse_up(self):
         if not self.is_mouse_down:
             return None
+        if self.board.current_direction != self.direction:
+            return None
         neighbors = [(self.table_x, self.table_y + 1), (self.table_x, self.table_y - 1),
                      (self.table_x + 1, self.table_y), (self.table_x - 1, self.table_y)]
         for neighbor in neighbors:
             neighbor_x, neighbor_y = neighbor
-            if type(self.board.table[neighbor_y][neighbor_x]) == CapitalCell:
-                continue
             if neighbor_x in range(self.board.side_size) and neighbor_y in range(self.board.side_size):
+                if type(self.board.table[neighbor_y][neighbor_x]) == CapitalCell:
+                    continue
                 self.board.table[neighbor_y][neighbor_x] = EmptyCell(neighbor_x, neighbor_y, self.direction, self.board)
         self.board.table[self.table_y][self.table_x] = EmptyCell(self.table_x, self.table_y, self.direction, self.board)
+        self.board.change_current_direction()
 
     def on_mouse_down(self, mouse_pos):
         self.is_mouse_down = True
@@ -159,7 +162,7 @@ class DraggableCell(ClickableCell):
 
 
 all_cells = [EmptyCell, TowerCell, BombCell]
-directions = [Direction.NOBODY, Direction.BLUE, Direction.ORANGE]
+directions = [Direction.BLUE, Direction.ORANGE]
 
 
 class AddingCell(DraggableCell):
@@ -194,7 +197,7 @@ class Board:
         self.second_capital_coordinates = None
 
     def change_current_direction(self):
-        self.current_direction = directions[directions.index(self.current_direction) % 2 + 1]
+        self.current_direction = directions[(directions.index(self.current_direction) + 1) % 2]
         self.added = [AddingCell(x, 6, self.current_direction, self)
                       for x in range(self.side_size + 2, self.side_size + 5)]
 
@@ -216,7 +219,7 @@ class Board:
     def is_cell_can_be_captured(self, x: int, y: int):
         if self.table[y][x].direction == self.current_direction:
             return False
-        if self.table[y][x].direction == directions[directions.index(self.current_direction) % 2 + 1]:
+        if self.table[y][x].direction == directions[(directions.index(self.current_direction) + 1) % 2]:
             if type(self.table[y][x]) == TowerCell:
                 return False
         neighbors = [(x, y + 1), (x, y - 1), (x + 1, y), (x - 1, y)]
@@ -293,7 +296,8 @@ class GameManager(Board):
             if event.type == pygame.MOUSEBUTTONUP:
                 if event.button == 1:
                     for cell in self.added:
-                        self.add_new_cell(cell)
+                        if cell.is_draggable:
+                            self.add_new_cell(cell)
                         cell.on_mouse_up()
                     for row in self.table:
                         for cell in row:
@@ -302,7 +306,6 @@ class GameManager(Board):
                                 y_range = range(cell.y, cell.y + self.cell_size)
                                 if event.pos[0] in x_range and event.pos[1] in y_range:
                                     cell.on_mouse_up()
-                                    self.change_current_direction()
             if event.type == pygame.MOUSEMOTION:
                 for cell in self.added:
                     cell.on_drag(event.pos)
