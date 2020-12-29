@@ -169,7 +169,6 @@ class AddingCell(DraggableCell):
     def __init__(self, x: int, y: int, direction: Direction, board):
         self.new_cell = all_cells[random.randint(0, len(all_cells)) - 1]
         super().__init__(x, y, direction, board)
-        self.init_image()
 
     def init_image(self):
         if self.sprite:
