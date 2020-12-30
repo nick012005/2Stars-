@@ -12,7 +12,7 @@ class Direction(Enum):
     NOBODY = 0
     ORANGE = 1
     BLUE = 2
-
+    
 
 def load_image(name, color_key=0):
     full_name = os.path.join('images', name)
@@ -28,44 +28,41 @@ def load_image(name, color_key=0):
 
 class DefaultCell(ABC):
     def __init__(self, x: int, y: int, direction: Direction, board):
-        self.direction = direction
         self.x = board.left + (board.cell_size + board.cell_distance) * x
         self.y = board.top + (board.cell_size + board.cell_distance) * y
+        self.direction = direction
+        self.board = board
         self.sprite = None
-        self.cell_size = board.cell_size
-        self.init_image()
 
-    @abstractmethod
-    def init_image(self):
-        pass
+    def init_image(self, name):
+        if self.sprite:
+            cell_sprites.remove(self.sprite)
+        self.sprite = pygame.sprite.Sprite()
+        self.sprite.image = load_image(f"{name[:-4].lower()}{self.direction.name}.png", color_key=-1)
+        self.sprite.image = pygame.transform.scale(self.sprite.image, (self.board.cell_size, self.board.cell_size))
+        self.sprite.rect = (self.x, self.y)
+        cell_sprites.add(self.sprite)
 
 
 class EmptyCell(DefaultCell):
-    def init_image(self):
-        if self.sprite:
-            cell_sprites.remove(self.sprite)
-        self.sprite = pygame.sprite.Sprite()
-        self.sprite.image = load_image(f"empty{self.direction.name}.png", color_key=-1)
-        self.sprite.image = pygame.transform.scale(self.sprite.image, (self.cell_size, self.cell_size))
-        self.sprite.rect = (self.x, self.y)
-        cell_sprites.add(self.sprite)
+    def __init__(self, x: int, y: int, direction: Direction, board):
+        super().__init__(x, y, direction, board)
+        self.init_image('EmptyCell')
 
 
 class CapitalCell(DefaultCell):
-    def init_image(self):
-        if self.sprite:
-            cell_sprites.remove(self.sprite)
-        self.sprite = pygame.sprite.Sprite()
-        self.sprite.image = load_image(f"capital{self.direction.name}.png", color_key=-1)
-        self.sprite.image = pygame.transform.scale(self.sprite.image, (self.cell_size, self.cell_size))
-        self.sprite.rect = (self.x, self.y)
-        cell_sprites.add(self.sprite)
+    def __init__(self, x: int, y: int, direction: Direction, board):
+        super().__init__(x, y, direction, board)
+        self.init_image('CapitalCell')
 
 
 class ClickableCell(DefaultCell):
-    @abstractmethod
-    def init_image(self):
-        pass
+    def __init__(self, x: int, y: int, direction: Direction, board):
+        super().__init__(x, y, direction, board)
+        self.is_mouse_down = False
+        self.board = board
+        self.table_x = x
+        self.table_y = y
 
     @abstractmethod
     def on_mouse_down(self, mouse_pos):
@@ -76,13 +73,31 @@ class ClickableCell(DefaultCell):
         pass
 
 
+class RandomCell(ClickableCell):
+    def __init__(self, x: int, y: int, direction: Direction, board):
+        super().__init__(x, y, direction, board)
+        self.init_image('RandomCell')
+
+    def on_mouse_up(self):
+        if not self.is_mouse_down:
+            return None
+        if self.board.current_direction != self.direction:
+            return None
+        variants = all_cells.copy()
+        del variants[0]
+        current_variant = random.choice(variants)
+        self.board.table[self.table_y][self.table_x] = current_variant(self.table_x, self.table_y, self.direction,
+                                                                       self.board)
+        self.board.change_current_direction()
+
+    def on_mouse_down(self, mouse_pos):
+        self.is_mouse_down = True
+
+
 class BombCell(ClickableCell):
     def __init__(self, x: int, y: int, direction: Direction, board):
         super().__init__(x, y, direction, board)
-        self.board = board
-        self.table_x = x
-        self.table_y = y
-        self.is_mouse_down = False
+        self.init_image('BombCell')
 
     def on_mouse_up(self):
         if not self.is_mouse_down:
@@ -103,35 +118,24 @@ class BombCell(ClickableCell):
     def on_mouse_down(self, mouse_pos):
         self.is_mouse_down = True
 
-    def init_image(self):
-        if self.sprite:
-            cell_sprites.remove(self.sprite)
-        self.sprite = pygame.sprite.Sprite()
-        self.sprite.image = load_image(f"bomb{self.direction.name}.png", color_key=-1)
-        self.sprite.image = pygame.transform.scale(self.sprite.image, (self.cell_size, self.cell_size))
-        self.sprite.rect = (self.x, self.y)
-        cell_sprites.add(self.sprite)
-
 
 class ProtectedCell(DefaultCell):
-    @abstractmethod
-    def init_image(self):
-        pass
+    pass
 
 
 class TowerCell(ProtectedCell):
-    def init_image(self):
-        if self.sprite:
-            cell_sprites.remove(self.sprite)
-        self.sprite = pygame.sprite.Sprite()
-        self.sprite.image = load_image(f"tower{self.direction.name}.png", color_key=-1)
-        self.sprite.image = pygame.transform.scale(self.sprite.image, (self.cell_size, self.cell_size))
-        self.sprite.rect = (self.x, self.y)
-        cell_sprites.add(self.sprite)
-
-
-class DraggableCell(ClickableCell):
     def __init__(self, x: int, y: int, direction: Direction, board):
+        super().__init__(x, y, direction, board)
+        self.init_image('TowerCell')
+
+
+all_cells = [RandomCell, EmptyCell, TowerCell, BombCell]
+directions = [Direction.BLUE, Direction.ORANGE]
+
+
+class AddingCell(ClickableCell):
+    def __init__(self, x: int, y: int, direction: Direction, board):
+        self.new_cell = random.choice(all_cells)
         self.is_draggable = False
         self.is_correct_coordinates = False
         self.draw_x = board.left + (board.cell_size + board.cell_distance) * x
@@ -139,10 +143,16 @@ class DraggableCell(ClickableCell):
         self.diff_x = 0
         self.diff_y = 0
         super().__init__(x, y, direction, board)
+        self.init_image(self.new_cell.__name__)
 
-    @abstractmethod
-    def init_image(self):
-        pass
+    def init_image(self, name):
+        if self.sprite:
+            cell_sprites.remove(self.sprite)
+        self.sprite = pygame.sprite.Sprite()
+        self.sprite.image = load_image(f"{name[:-4].lower()}{self.direction.name}.png", color_key=-1)
+        self.sprite.image = pygame.transform.scale(self.sprite.image, (self.board.cell_size, self.board.cell_size))
+        self.sprite.rect = (self.draw_x, self.draw_y)
+        cell_sprites.add(self.sprite)
 
     def on_mouse_down(self, mouse_pos: tuple):
         self.diff_x = mouse_pos[0] - self.x
@@ -153,31 +163,12 @@ class DraggableCell(ClickableCell):
         self.draw_x = self.x
         self.draw_y = self.y
         self.is_draggable = False
-        self.init_image()
+        self.init_image(self.new_cell.__name__)
 
     def on_drag(self, mouse_position: tuple):
         if self.is_draggable:
             self.draw_x, self.draw_y = mouse_position[0] - self.diff_x, mouse_position[1] - self.diff_y
-            self.init_image()
-
-
-all_cells = [EmptyCell, TowerCell, BombCell]
-directions = [Direction.BLUE, Direction.ORANGE]
-
-
-class AddingCell(DraggableCell):
-    def __init__(self, x: int, y: int, direction: Direction, board):
-        self.new_cell = all_cells[random.randint(0, len(all_cells)) - 1]
-        super().__init__(x, y, direction, board)
-
-    def init_image(self):
-        if self.sprite:
-            cell_sprites.remove(self.sprite)
-        self.sprite = pygame.sprite.Sprite()
-        self.sprite.image = load_image(f"{self.new_cell.__name__[:-4].lower()}{self.direction.name}.png", color_key=-1)
-        self.sprite.image = pygame.transform.scale(self.sprite.image, (self.cell_size, self.cell_size))
-        self.sprite.rect = (self.draw_x, self.draw_y)
-        cell_sprites.add(self.sprite)
+            self.init_image(self.new_cell.__name__)
 
 
 class Board:
@@ -217,10 +208,10 @@ class Board:
         self.generate_capitals_coordinates(distance)
 
     def is_cell_can_be_captured(self, x: int, y: int):
-        if self.table[y][x].direction == self.current_direction:
+        if self.table[y][x].direction == self.current_direction and type(self.table[y][x]) != EmptyCell:
             return False
         if self.table[y][x].direction == directions[(directions.index(self.current_direction) + 1) % 2]:
-            if type(self.table[y][x]) == TowerCell:
+            if issubclass(type(self.table[y][x]), ProtectedCell):
                 return False
         neighbors = [(x, y + 1), (x, y - 1), (x + 1, y), (x - 1, y)]
         for neighbor in neighbors:
