@@ -350,6 +350,12 @@ all_game_modes = [DefaultBoard, DeadBoard]
 start_sprites = pygame.sprite.Group()
 
 
+class Questions(DefaultBoard):
+    def __init__(self, x: int, y: int, direction: Direction, board):
+        super().__init__(x)
+        self.image2 = load_image('towerORANGE.png')
+
+
 class GameManager:
     def __init__(self):
         self.screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
@@ -376,14 +382,12 @@ class GameManager:
     def start_init(self):
         a = self.screen.get_size()[0] // 40
         b = self.screen.get_size()[1] // 20
-        c = ["leftButton.png", "rightButton.png"]
+        c = "Rook.jpg"
         f = self.screen.get_size()[0] // 3
-        for i in range(2):
-            button = pygame.sprite.Sprite()
-            button.image = load_image(c[i], color_key=-1)
-            button.image = pygame.transform.scale(button.image, (a, b))
-            button.rect = (i * self.screen.get_size()[0] // 3 + f, self.screen.get_size()[1] // 2)
-            start_sprites.add(button)
+        button = pygame.sprite.Sprite()
+        button.image = load_image(c, color_key=-1)
+        button.rect = (1, 1)
+        start_sprites.add(button)
 
     def play(self):
         while self.is_game_process:
