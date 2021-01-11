@@ -556,6 +556,7 @@ class GameManager:
             if event.type == pygame.MOUSEBUTTONUP:
                 if event.button == 1:
                     self.board.mouse_up_processing(event.pos)
+                    self.board.mouse_up_processing(event.pos)
             if event.type == pygame.MOUSEMOTION:
                 self.board.on_mouse_motion(event.pos)
             if event.type == pygame.USEREVENT:
