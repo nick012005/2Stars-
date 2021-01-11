@@ -532,6 +532,7 @@ class GameManager:
                 elif self.board.timer == -2:
                     self.board.change_current_direction()
                 else:
+                    self.board.mouse_up_processing((0, 0))
                     text = 'Переход хода!'
                     self.screen.blit(shrift2.render(text, True, (255, 255, 255)), (1300, 200))
             pygame.display.flip()
