@@ -31,6 +31,8 @@ class DefaultCell(ABC):
     def __init__(self, x: int, y: int, direction: Direction, board):
         self.x = board.left + (board.cell_size + board.cell_distance) * x
         self.y = board.top + (board.cell_size + board.cell_distance) * y
+        self.table_x = x
+        self.table_y = y
         self.direction = direction
         self.board = board
         self.sprite = None
@@ -77,8 +79,6 @@ class ClickableCell(DefaultCell):
         super().__init__(x, y, direction, board)
         self.is_mouse_down = False
         self.board = board
-        self.table_x = x
-        self.table_y = y
 
     @abstractmethod
     def on_mouse_down(self, mouse_pos):
@@ -99,9 +99,7 @@ class RandomCell(ClickableCell):
             return None
         if self.board.current_direction != self.direction:
             return None
-        variants = all_cells.copy()
-        del variants[0]
-        current_variant = random.choice(variants)
+        current_variant = random.choice(all_cells[2:])
         self.board.table[self.table_y][self.table_x] = current_variant(self.table_x, self.table_y, self.direction,
                                                                        self.board)
         self.board.change_current_direction()
@@ -145,14 +143,81 @@ class TowerCell(ProtectedCell):
         self.init_image('TowerCell')
 
 
-all_cells = [RandomCell, EmptyCell, TowerCell, BombCell]
+class YandexCell(ClickableCell, ProtectedCell):
+    def __init__(self, x: int, y: int, direction: Direction, board):
+        super().__init__(x, y, direction, board)
+        self.init_image('YandexCell')
+
+    def on_mouse_up(self):
+        if not self.is_mouse_down:
+            return None
+        if self.board.current_direction != self.direction:
+            return None
+        yandexed = []
+        for row in self.board.table:
+            for cell in row:
+                if cell.direction == Direction.NOBODY or cell.direction == Direction.NONE:
+                    neighbors = [(cell.table_x, cell.table_y + 1), (cell.table_x, cell.table_y - 1),
+                                 (cell.table_x + 1, cell.table_y), (cell.table_x - 1, cell.table_y)]
+                    for neighbor in neighbors:
+                        neighbor_x, neighbor_y = neighbor
+                        if neighbor_x in range(self.board.side_size) and neighbor_y in range(self.board.side_size):
+                            if self.board.table[neighbor_y][neighbor_x].direction == self.direction:
+                                if type(cell) == CapitalCell:
+                                    continue
+                                yandexed.append((cell.table_x, cell.table_y))
+        for coordinates in yandexed:
+            x, y = coordinates
+            self.board.table[y][x] = EmptyCell(x, y, self.direction, self.board)
+        self.board.table[self.table_y][self.table_x] = EmptyCell(self.table_x, self.table_y, self.direction, self.board)
+        self.board.change_current_direction()
+
+    def on_mouse_down(self, mouse_pos):
+        self.is_mouse_down = True
+
+
+class TurnCell(DefaultCell):
+    def __init__(self, x: int, y: int, direction: Direction, board):
+        super().__init__(x, y, direction, board)
+
+    @abstractmethod
+    def on_turn_changed(self):
+        pass
+
+
+class ChangedCell(TurnCell):
+    def __init__(self, x: int, y: int, direction: Direction, board):
+        super().__init__(x, y, direction, board)
+        self.mask_cell = random.choice(all_cells[1:])(self.table_x, self.table_y, self.direction, self.board)
+        self.init_image('ChangedCell')
+
+    def on_turn_changed(self):
+        if self.board.current_direction != self.direction:
+            return None
+        self.mask_cell = random.choice(all_cells[2:])(self.table_x, self.table_y, self.direction, self.board)
+        self.mask_cell.init_image(type(self.mask_cell).__name__)
+        self.mask_image()
+
+    def mask_image(self):
+        if self.sprite:
+            cell_sprites.remove(self.sprite)
+        self.sprite = pygame.sprite.Sprite()
+        self.sprite.image = load_image(f"changed{self.direction.name}.png", color_key=-1)
+        mask_size = self.board.cell_size // 3
+        dist = self.board.cell_size // 1.7
+        self.sprite.image = pygame.transform.scale(self.sprite.image, (mask_size, mask_size))
+        self.sprite.rect = (self.x + dist, self.y + dist)
+        cell_sprites.add(self.sprite)
+
+
+all_cells = [ChangedCell, RandomCell, EmptyCell, TowerCell, BombCell, YandexCell]
+all_cells_chances = [0.5, 0.3, 0, 0.3, 0.3, 0.6]
 directions = [Direction.BLUE, Direction.ORANGE]
 current_direction = Direction.ORANGE
 
 
 class AddingCell(ClickableCell):
     def __init__(self, x: int, y: int, direction: Direction, board):
-        self.new_cell = random.choice(all_cells)
         self.is_draggable = False
         self.is_correct_coordinates = False
         self.draw_x = board.left + (board.cell_size + board.cell_distance) * x
@@ -160,6 +225,7 @@ class AddingCell(ClickableCell):
         self.diff_x = 0
         self.diff_y = 0
         super().__init__(x, y, direction, board)
+        self.new_cell = random.choice(all_cells)
         self.init_image(self.new_cell.__name__)
 
     def init_image(self, name):
@@ -195,7 +261,7 @@ class DefaultBoard:
         side_range = range(self.side_size)
         self.table = [[EmptyCell(x, y, Direction.NOBODY, self) for x in side_range] for y in side_range]
         self.create_capitals(distance=3)
-        self.added = [AddingCell(x + side_size + 2, 6, current_direction, self) for x in range(3)]
+        self.added = [AddingCell(x + side_size + 2, 4, current_direction, self) for x in range(3)]
         self.current_direction = Direction.ORANGE
         self.winner = None
 
@@ -228,8 +294,12 @@ class DefaultBoard:
         return left, top, cell_distance, cell_size
 
     def change_current_direction(self):
+        for row in self.table:
+            for cell in row:
+                if issubclass(type(cell), TurnCell):
+                    cell.on_turn_changed()
         self.current_direction = directions[(directions.index(self.current_direction) + 1) % 2]
-        self.added = [AddingCell(x, 6, self.current_direction, self)
+        self.added = [AddingCell(x, 4, self.current_direction, self)
                       for x in range(self.side_size + 2, self.side_size + 5)]
 
     def create_capitals(self, distance: int):
@@ -280,6 +350,12 @@ class DefaultBoard:
                     y_range = range(cell.y, cell.y + self.cell_size)
                     if mouse_position[0] in x_range and mouse_position[1] in y_range:
                         cell.on_mouse_down(mouse_position)
+                if type(cell) == ChangedCell:
+                    if issubclass(type(cell.mask_cell), ClickableCell):
+                        x_range = range(cell.x, cell.x + self.cell_size)
+                        y_range = range(cell.y, cell.y + self.cell_size)
+                        if mouse_position[0] in x_range and mouse_position[1] in y_range:
+                            cell.mask_cell.on_mouse_down(mouse_position)
 
     def mouse_up_processing(self, mouse_position):
         for cell in self.added:
@@ -293,17 +369,44 @@ class DefaultBoard:
                     y_range = range(cell.y, cell.y + self.cell_size)
                     if mouse_position[0] in x_range and mouse_position[1] in y_range:
                         cell.on_mouse_up()
+                if type(cell) == ChangedCell:
+                    if issubclass(type(cell.mask_cell), ClickableCell):
+                        x_range = range(cell.x, cell.x + self.cell_size)
+                        y_range = range(cell.y, cell.y + self.cell_size)
+                        if mouse_position[0] in x_range and mouse_position[1] in y_range:
+                            cell.mask_cell.on_mouse_up()
+        self.added[0].on_mouse_up()
 
     def on_mouse_motion(self, mouse_position):
         for cell in self.added:
             cell.on_drag(mouse_position)
 
 
+class BlitzBoard(DefaultBoard):
+    def __init__(self, side_size: int):
+        super().__init__(side_size)
+        self.timer = 5
+
+    def change_current_direction(self):
+        for row in self.table:
+            for cell in row:
+                if issubclass(type(cell), TurnCell):
+                    cell.on_turn_changed()
+        self.current_direction = directions[(directions.index(self.current_direction) + 1) % 2]
+        self.added = [AddingCell(x, 4, self.current_direction, self)
+                      for x in range(self.side_size + 2, self.side_size + 5)]
+        self.timer = 5
+
+
 class DeadBoard(DefaultBoard):
     def change_current_direction(self):
         self.delete_cell()
+        for row in self.table:
+            for cell in row:
+                if issubclass(type(cell), TurnCell):
+                    cell.on_turn_changed()
         self.current_direction = directions[(directions.index(self.current_direction) + 1) % 2]
-        self.added = [AddingCell(x, 6, self.current_direction, self)
+        self.added = [AddingCell(x, 4, self.current_direction, self)
                       for x in range(self.side_size + 2, self.side_size + 5)]
 
     def is_cell_can_be_captured(self, x: int, y: int):
@@ -335,7 +438,7 @@ class DeadBoard(DefaultBoard):
     def delete_cell(self):
         x, y = random.choices(range(self.side_size), k=2)
         if self.table[y][x].direction == Direction.NOBODY:
-            self.table[y][x] = DeadCell(x, y, Direction.ORANGE, self)
+            self.table[y][x] = DeadCell(x, y, Direction.NONE, self)
             return None
         empties = 0
         for row in self.table:
@@ -346,56 +449,93 @@ class DeadBoard(DefaultBoard):
             self.delete_cell()
 
 
-all_game_modes = [DefaultBoard, DeadBoard]
-start_sprites = pygame.sprite.Group()
-
-
-class Questions(DefaultBoard):
-    def __init__(self, x: int, y: int, direction: Direction, board):
-        super().__init__(x)
-        self.image2 = load_image('towerORANGE.png')
+all_game_modes = [DefaultBoard, DeadBoard, BlitzBoard]
 
 
 class GameManager:
     def __init__(self):
         self.screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+        self.start_sprites = pygame.sprite.Group()
         self.is_game_process = False
         self.board = None
 
     def start(self):
+        x = self.screen.get_size()[0] // 3
+        y = self.screen.get_size()[1] * 2 // 3
+        shrift = pygame.font.SysFont('Times New Romans', 60)
         game_mode_id = 0
-        self.start_init()
         while not self.is_game_process:
             for event in pygame.event.get():
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    game_mode_id = (game_mode_id + 1) % len(all_game_modes)
+                    if event.pos[1] in range(y // 2, y // 2 + y // 3):
+                        if event.pos[0] in range(int(x * 2.1), int(x * 2.1) + x // 2):
+                            game_mode_id = (game_mode_id + 1) % len(all_game_modes)
+                        elif event.pos[0] in range(int(x * 0.4), int(x * 0.4) + x // 2):
+                            game_mode_id = (game_mode_id - 1) % len(all_game_modes)
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_SPACE:
                         self.is_game_process = True
                         self.board = all_game_modes[game_mode_id](8)
                         self.play()
                         return None
+            self.refresh_menu(game_mode_id)
             self.screen.fill(pygame.Color(27, 27, 27))
-            start_sprites.draw(self.screen)
+            self.start_sprites.draw(self.screen)
+            self.screen.blit(shrift.render('[SPACE] - to start', True, (255, 255, 255)), (x * 1.2, y * 1.5 - 100))
             pygame.display.flip()
 
-    def start_init(self):
-        a = self.screen.get_size()[0] // 40
-        b = self.screen.get_size()[1] // 20
-        c = "Rook.jpg"
-        f = self.screen.get_size()[0] // 3
-        button = pygame.sprite.Sprite()
-        button.image = load_image(c, color_key=-1)
-        button.rect = (1, 1)
-        start_sprites.add(button)
+    def refresh_menu(self, mode_id):
+        self.start_sprites = pygame.sprite.Group()
+        x = self.screen.get_size()[0] // 3
+        y = self.screen.get_size()[1] * 2 // 3
+        if all_game_modes[mode_id] == DefaultBoard:
+            name = 'standartGameMode.png'
+        elif all_game_modes[mode_id] == DeadBoard:
+            name = 'DeathGameMode.png'
+        elif all_game_modes[mode_id] == BlitzBoard:
+            name = 'BlitzGameMode.png'
+        else:
+            name = ''
+        tower = pygame.sprite.Sprite()
+        tower.image = load_image(name, color_key=-1)
+        tower.image = pygame.transform.scale(tower.image, (x, y))
+        tower.rect = (x, y // 8)
+        self.start_sprites.add(tower)
+
+        right = pygame.sprite.Sprite()
+        right.image = load_image('rightButton.png', color_key=-1)
+        right.image = pygame.transform.scale(right.image, (x // 2, y // 3))
+        right.rect = (int(x * 2.1), y // 2)
+        self.start_sprites.add(right)
+
+        left = pygame.sprite.Sprite()
+        left.image = load_image('leftButton.png', color_key=-1)
+        left.image = pygame.transform.scale(left.image, (x // 2, y // 3))
+        left.rect = (int(x * 0.4), y // 2)
+        self.start_sprites.add(left)
 
     def play(self):
+        clock = pygame.time.Clock()
+        shrift = pygame.font.SysFont('Times New Romans', 200)
+        shrift2 = pygame.font.SysFont('Times New Romans', 100)
+        pygame.time.set_timer(pygame.USEREVENT, 1000)
         while self.is_game_process:
             if not self.board.is_win():
                 self.manage_events()
                 self.render()
             else:
                 self.finish()
+            if type(self.board) == BlitzBoard:
+                if self.board.timer > 0:
+                    text = str(self.board.timer).rjust(15)
+                    self.screen.blit(shrift.render(text, True, (255, 255, 255)), (900, 200))
+                elif self.board.timer == -2:
+                    self.board.change_current_direction()
+                else:
+                    text = 'Переход хода!'
+                    self.screen.blit(shrift2.render(text, True, (255, 255, 255)), (1300, 200))
+            pygame.display.flip()
+            clock.tick(60)
         pygame.quit()
 
     def finish(self):
@@ -404,7 +544,6 @@ class GameManager:
     def render(self):
         self.screen.fill(pygame.Color(27, 27, 27))
         cell_sprites.draw(self.screen)
-        pygame.display.flip()
 
     def manage_events(self):
         for event in pygame.event.get():
@@ -419,6 +558,9 @@ class GameManager:
                     self.board.mouse_up_processing(event.pos)
             if event.type == pygame.MOUSEMOTION:
                 self.board.on_mouse_motion(event.pos)
+            if event.type == pygame.USEREVENT:
+                if type(self.board) == BlitzBoard:
+                    self.board.timer -= 1
 
 
 game = GameManager()
