@@ -6,6 +6,12 @@ import os
 
 pygame.init()
 cell_sprites = pygame.sprite.Group()
+sound_dir = os.path.join(os.path.dirname(__file__), 'sounds')
+bomb_sound = pygame.mixer.Sound(os.path.join(sound_dir, 'bomb.wav'))
+bomb_sound2 = pygame.mixer.Sound(os.path.join(sound_dir, 'bomb2.wav'))
+rook_sound = pygame.mixer.Sound(os.path.join(sound_dir, 'rook.mp3'))
+pygame.mixer.music.load(os.path.join(sound_dir, 'fon_music.mp3'))
+pygame.mixer.music.set_volume(0.2)
 
 
 class Direction(Enum):
@@ -125,6 +131,11 @@ class BombCell(ClickableCell):
             if neighbor_x in range(self.board.side_size) and neighbor_y in range(self.board.side_size):
                 if type(self.board.table[neighbor_y][neighbor_x]) == CapitalCell:
                     continue
+                zv = random.randint(1, 2)
+                if zv == 1:
+                    bomb_sound.play()
+                elif zv == 2:
+                    bomb_sound2.play()
                 self.board.table[neighbor_y][neighbor_x] = EmptyCell(neighbor_x, neighbor_y, self.direction, self.board)
         self.board.table[self.table_y][self.table_x] = EmptyCell(self.table_x, self.table_y, self.direction, self.board)
         self.board.change_current_direction()
@@ -159,6 +170,7 @@ class YandexCell(ClickableCell, ProtectedCell):
                 if cell.direction == Direction.NOBODY or cell.direction == Direction.NONE:
                     neighbors = [(cell.table_x, cell.table_y + 1), (cell.table_x, cell.table_y - 1),
                                  (cell.table_x + 1, cell.table_y), (cell.table_x - 1, cell.table_y)]
+                    rook_sound.play()
                     for neighbor in neighbors:
                         neighbor_x, neighbor_y = neighbor
                         if neighbor_x in range(self.board.side_size) and neighbor_y in range(self.board.side_size):
@@ -458,6 +470,7 @@ class GameManager:
         self.start_sprites = pygame.sprite.Group()
         self.is_game_process = False
         self.board = None
+        pygame.mixer.music.play(loops=-1)
 
     def start(self):
         x = self.screen.get_size()[0] // 3
