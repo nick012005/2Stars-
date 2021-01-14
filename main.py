@@ -5,11 +5,15 @@ import pygame
 import os
 
 pygame.init()
+
 cell_sprites = pygame.sprite.Group()
+
+# загрузка звуков
 sound_dir = os.path.join(os.path.dirname(__file__), 'sounds')
 bomb_sound = pygame.mixer.Sound(os.path.join(sound_dir, 'bomb.wav'))
 bomb_sound2 = pygame.mixer.Sound(os.path.join(sound_dir, 'bomb2.wav'))
 rook_sound = pygame.mixer.Sound(os.path.join(sound_dir, 'rook.mp3'))
+# загрузка музыки
 pygame.mixer.music.load(os.path.join(sound_dir, 'fon_music.mp3'))
 pygame.mixer.music.set_volume(0.2)
 
@@ -21,6 +25,7 @@ class Direction(Enum):
     BLUE = 3
 
 
+# загрузка изображений
 def load_image(name, color_key=0):
     full_name = os.path.join('images', name)
     try:
@@ -53,6 +58,7 @@ class DefaultCell(ABC):
         cell_sprites.add(self.sprite)
 
 
+# класс уничтожающейся клетки в режиме "Death"
 class DeadCell(DefaultCell):
     def __init__(self, x: int, y: int, direction: Direction, board):
         super().__init__(x, y, direction, board)
@@ -74,6 +80,7 @@ class EmptyCell(DefaultCell):
         self.init_image('EmptyCell')
 
 
+# класс столиц
 class CapitalCell(DefaultCell):
     def __init__(self, x: int, y: int, direction: Direction, board):
         super().__init__(x, y, direction, board)
@@ -95,6 +102,7 @@ class ClickableCell(DefaultCell):
         pass
 
 
+# класс, отвечающий за появление случайной клетки
 class RandomCell(ClickableCell):
     def __init__(self, x: int, y: int, direction: Direction, board):
         super().__init__(x, y, direction, board)
@@ -114,6 +122,7 @@ class RandomCell(ClickableCell):
         self.is_mouse_down = True
 
 
+# класс клетки бомбы
 class BombCell(ClickableCell):
     def __init__(self, x: int, y: int, direction: Direction, board):
         super().__init__(x, y, direction, board)
@@ -148,12 +157,14 @@ class ProtectedCell(DefaultCell):
     pass
 
 
+# класс клетки башни
 class TowerCell(ProtectedCell):
     def __init__(self, x: int, y: int, direction: Direction, board):
         super().__init__(x, y, direction, board)
         self.init_image('TowerCell')
 
 
+# класс клетки "Яндекс"
 class YandexCell(ClickableCell, ProtectedCell):
     def __init__(self, x: int, y: int, direction: Direction, board):
         super().__init__(x, y, direction, board)
@@ -188,6 +199,7 @@ class YandexCell(ClickableCell, ProtectedCell):
         self.is_mouse_down = True
 
 
+# класс, описывающий "изменяющюся клетку" в игре
 class TurnCell(DefaultCell):
     def __init__(self, x: int, y: int, direction: Direction, board):
         super().__init__(x, y, direction, board)
@@ -228,6 +240,7 @@ directions = [Direction.BLUE, Direction.ORANGE]
 current_direction = Direction.ORANGE
 
 
+# класс, отвечающий за добавление клетки на поле
 class AddingCell(ClickableCell):
     def __init__(self, x: int, y: int, direction: Direction, board):
         self.is_draggable = False
@@ -266,6 +279,7 @@ class AddingCell(ClickableCell):
             self.init_image(self.new_cell.__name__)
 
 
+# класс поля в стандартном режиме
 class DefaultBoard:
     def __init__(self, side_size: int):
         self.side_size = side_size
@@ -306,6 +320,7 @@ class DefaultBoard:
         return left, top, cell_distance, cell_size
 
     def change_current_direction(self):
+        # функция изменения хода
         for row in self.table:
             for cell in row:
                 if issubclass(type(cell), TurnCell):
@@ -394,6 +409,7 @@ class DefaultBoard:
             cell.on_drag(mouse_position)
 
 
+# класс поля в режиме блитц
 class BlitzBoard(DefaultBoard):
     def __init__(self, side_size: int):
         super().__init__(side_size)
@@ -410,6 +426,7 @@ class BlitzBoard(DefaultBoard):
         self.timer = 5
 
 
+# класс поля в режиме "Death"
 class DeadBoard(DefaultBoard):
     def change_current_direction(self):
         self.delete_cell()
@@ -464,6 +481,7 @@ class DeadBoard(DefaultBoard):
 all_game_modes = [DefaultBoard, DeadBoard, BlitzBoard]
 
 
+# класс игрового менеджера и показа игры на ваш экран
 class GameManager:
     def __init__(self):
         self.screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
